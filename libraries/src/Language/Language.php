@@ -2,7 +2,7 @@
 /**
  * Joomla! Content Management System
  *
- * @copyright  Copyright (C) 2005 - 2019 Open Source Matters, Inc. All rights reserved.
+ * @copyright  (C) 2005 Open Source Matters, Inc. <https://www.joomla.org>
  * @license    GNU General Public License version 2 or later; see LICENSE.txt
  */
 
@@ -203,14 +203,16 @@ class Language
 		{
 			// Note: Manual indexing to enforce load order.
 			$paths[0] = JPATH_SITE . "/language/overrides/$lang.localise.php";
-			$paths[2] = JPATH_SITE . "/language/$lang/$lang.localise.php";
+			$paths[2] = JPATH_SITE . "/language/$lang/localise.php";
+			$paths[4] = JPATH_SITE . "/language/$lang/$lang.localise.php";
 		}
 
 		if (\defined('JPATH_ADMINISTRATOR'))
 		{
 			// Note: Manual indexing to enforce load order.
 			$paths[1] = JPATH_ADMINISTRATOR . "/language/overrides/$lang.localise.php";
-			$paths[3] = JPATH_ADMINISTRATOR . "/language/$lang/$lang.localise.php";
+			$paths[3] = JPATH_ADMINISTRATOR . "/language/$lang/localise.php";
+			$paths[5] = JPATH_ADMINISTRATOR . "/language/$lang/$lang.localise.php";
 		}
 
 		ksort($paths);
@@ -218,7 +220,7 @@ class Language
 
 		while (!class_exists($class) && $path)
 		{
-			if (file_exists($path))
+			if (is_file($path))
 			{
 				require_once $path;
 			}
@@ -322,7 +324,7 @@ class Language
 			// Store debug information
 			if ($this->debug)
 			{
-				$value = Factory::getApplication()->get('debug_lang_const') == 0 ? $key : $string;
+				$value = Factory::getApplication()->get('debug_lang_const', true) ? $string : $key;
 				$string = '**' . $value . '**';
 
 				$caller = $this->getCallerInfo();
@@ -386,15 +388,30 @@ class Language
 	 */
 	public function transliterate($string)
 	{
+		// First check for transliterator provided by translation
 		if ($this->transliterator !== null)
 		{
-			return \call_user_func($this->transliterator, $string);
+			$string = \call_user_func($this->transliterator, $string);
+
+			// Check if all symbols were transliterated (contains only ASCII), otherwise continue
+			if (!preg_match('/[\\x80-\\xff]/', $string))
+			{
+				return $string;
+			}
 		}
 
+		// Run our transliterator for common symbols,
+		// This need to be executed before native php transliterator, because it may not have all required transliterators
 		$string = Transliterate::utf8_latin_to_ascii($string);
-		$string = StringHelper::strtolower($string);
 
-		return $string;
+		// Check if all symbols were transliterated (contains only ASCII),
+		// Otherwise try to use native php function if available
+		if (preg_match('/[\\x80-\\xff]/', $string) && function_exists('transliterator_transliterate') && function_exists('iconv'))
+		{
+			return iconv("UTF-8", "ASCII//TRANSLIT//IGNORE", transliterator_transliterate('Any-Latin; Latin-ASCII; Lower()', $string));
+		}
+
+		return StringHelper::strtolower($string);
 	}
 
 	/**
@@ -696,44 +713,42 @@ class Language
 
 		$path = LanguageHelper::getLanguagePath($basePath, $lang);
 
-		$internal = $extension == 'joomla' || $extension == '';
-		$filename = $internal ? $lang : $lang . '.' . $extension;
-		$filename = "$path/$filename.ini";
+		$internal = $extension === 'joomla' || $extension == '';
 
-		if (isset($this->paths[$extension][$filename]) && !$reload)
+		$filenames = array();
+
+		if ($internal)
 		{
-			// This file has already been tested for loading.
-			$result = $this->paths[$extension][$filename];
+			$filenames[] = "$path/joomla.ini";
+			$filenames[] = "$path/$lang.ini";
 		}
 		else
 		{
-			// Load the language file
-			$result = $this->loadLanguage($filename, $extension);
+			// Try first without a language-prefixed filename.
+			$filenames[] = "$path/$extension.ini";
+			$filenames[] = "$path/$lang.$extension.ini";
+		}
 
-			// Check whether there was a problem with loading the file
-			if ($result === false && $default)
+		foreach ($filenames as $filename)
+		{
+			if (isset($this->paths[$extension][$filename]) && !$reload)
 			{
-				// No strings, so either file doesn't exist or the file is invalid
-				$oldFilename = $filename;
+				// This file has already been tested for loading.
+				$result = $this->paths[$extension][$filename];
+			}
+			else
+			{
+				// Load the language file
+				$result = $this->loadLanguage($filename, $extension);
+			}
 
-				// Check the standard file name
-				if (!$this->debug)
-				{
-					$path = LanguageHelper::getLanguagePath($basePath, $this->default);
-
-					$filename = $internal ? $this->default : $this->default . '.' . $extension;
-					$filename = "$path/$filename.ini";
-
-					// If the one we tried is different than the new name, try again
-					if ($oldFilename != $filename)
-					{
-						$result = $this->loadLanguage($filename, $extension, false);
-					}
-				}
+			if ($result)
+			{
+				return true;
 			}
 		}
 
-		return $result;
+		return false;
 	}
 
 	/**
@@ -787,7 +802,7 @@ class Language
 		$strings = LanguageHelper::parseIniFile($fileName, $this->debug);
 
 		// Debug the ini file if needed.
-		if ($this->debug === true && file_exists($fileName))
+		if ($this->debug === true && is_file($fileName))
 		{
 			$this->debugFile($fileName);
 		}
@@ -808,7 +823,7 @@ class Language
 	public function debugFile($filename)
 	{
 		// Make sure our file actually exists
-		if (!file_exists($filename))
+		if (!is_file($filename))
 		{
 			throw new \InvalidArgumentException(
 				sprintf('Unable to locate file "%s" for debugging', $filename)
@@ -816,7 +831,7 @@ class Language
 		}
 
 		// Initialise variables for manually parsing the file for common errors.
-		$blacklist = array('YES', 'NO', 'NULL', 'FALSE', 'ON', 'OFF', 'NONE', 'TRUE');
+		$reservedWord = array('YES', 'NO', 'NULL', 'FALSE', 'ON', 'OFF', 'NONE', 'TRUE');
 		$debug = $this->getDebug();
 		$this->debug = false;
 		$errors = array();
@@ -866,10 +881,10 @@ class Language
 				continue;
 			}
 
-			// Check that the key is not in the blacklist.
+			// Check that the key is not in the reserved constants list.
 			$key = strtoupper(trim(substr($line, 0, strpos($line, '='))));
 
-			if (\in_array($key, $blacklist))
+			if (\in_array($key, $reservedWord))
 			{
 				$errors[] = $realNumber;
 			}

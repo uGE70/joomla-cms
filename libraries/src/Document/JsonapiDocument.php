@@ -3,7 +3,7 @@
  * @package     Joomla.Platform
  * @subpackage  Document
  *
- * @copyright   Copyright (C) 2005 - 2019 Open Source Matters, Inc. All rights reserved.
+ * @copyright   (C) 2019 Open Source Matters, Inc. <https://www.joomla.org>
  * @license     GNU General Public License version 2 or later; see LICENSE
  */
 
@@ -99,7 +99,7 @@ class JsonapiDocument extends JsonDocument implements \JsonSerializable
 	 */
 	public function setJsonapi($jsonapi)
 	{
-		$this->setJsonapi($jsonapi);
+		$this->document->setJsonapi($jsonapi);
 
 		return $this;
 	}

@@ -2,7 +2,7 @@
 /**
  * Joomla! Content Management System
  *
- * @copyright  Copyright (C) 2005 - 2019 Open Source Matters, Inc. All rights reserved.
+ * @copyright  (C) 2016 Open Source Matters, Inc. <https://www.joomla.org>
  * @license    GNU General Public License version 2 or later; see LICENSE.txt
  */
 
@@ -13,6 +13,7 @@ namespace Joomla\CMS\Form\Field;
 use Joomla\CMS\Filesystem\Path;
 use Joomla\CMS\Form\Form;
 use Joomla\CMS\Form\FormField;
+use Joomla\Registry\Registry;
 
 /**
  * The Field to load the form inside current form
@@ -64,7 +65,7 @@ class SubformField extends FormField
 	protected $groupByFieldset = false;
 
 	/**
-	 * Which buttons to show in miltiple mode
+	 * Which buttons to show in multiple mode
 	 * @var array $buttons
 	 */
 	protected $buttons = array('add' => true, 'remove' => true, 'move' => true);
@@ -180,9 +181,9 @@ class SubformField extends FormField
 	/**
 	 * Method to attach a Form object to the field.
 	 *
-	 * @param   SimpleXMLElement  $element  The SimpleXMLElement object representing the <field /> tag for the form field object.
-	 * @param   mixed             $value    The form field value to validate.
-	 * @param   string            $group    The field name group control value.
+	 * @param   \SimpleXMLElement  $element  The SimpleXMLElement object representing the <field /> tag for the form field object.
+	 * @param   mixed              $value    The form field value to validate.
+	 * @param   string             $group    The field name group control value.
 	 *
 	 * @return  boolean  True on success.
 	 *
@@ -246,6 +247,7 @@ class SubformField extends FormField
 		$data['control']   = $control;
 		$data['buttons']   = $this->buttons;
 		$data['fieldname'] = $this->fieldname;
+		$data['fieldId']   = $this->id;
 		$data['groupByFieldset'] = $this->groupByFieldset;
 
 		/**
@@ -368,13 +370,13 @@ class SubformField extends FormField
 	/**
 	 * Binds given data to the subform and its elements.
 	 *
-	 * @param   Form  &$subForm  Form instance of the subform.
+	 * @param   Form  $subForm  Form instance of the subform.
 	 *
 	 * @return  Form[]  Array of Form instances for the rows.
 	 *
 	 * @since   3.9.7
 	 */
-	private function loadSubFormData(Form &$subForm)
+	protected function loadSubFormData(Form $subForm)
 	{
 		$value = $this->value ? (array) $this->value : array();
 
@@ -407,5 +409,69 @@ class SubformField extends FormField
 		}
 
 		return $forms;
+	}
+
+	/**
+	 * Method to filter a field value.
+	 *
+	 * @param   mixed     $value  The optional value to use as the default for the field.
+	 * @param   string    $group  The optional dot-separated form group path on which to find the field.
+	 * @param   Registry  $input  An optional Registry object with the entire data set to filter
+	 *                            against the entire form.
+	 *
+	 * @return  mixed   The filtered value.
+	 *
+	 * @since   4.0.0
+	 * @throws  \UnexpectedValueException
+	 */
+	public function filter($value, $group = null, Registry $input = null)
+	{
+		// Make sure there is a valid SimpleXMLElement.
+		if (!($this->element instanceof \SimpleXMLElement))
+		{
+			throw new \UnexpectedValueException(sprintf('%s::filter `element` is not an instance of SimpleXMLElement', \get_class($this)));
+		}
+
+		// Get the field filter type.
+		$filter = (string) $this->element['filter'];
+
+		if ($filter !== '')
+		{
+			return parent::filter($value, $group, $input);
+		}
+
+		// Dirty way of ensuring required fields in subforms are submitted and filtered the way other fields are
+		$subForm = $this->loadSubForm();
+
+		// Subform field may have a default value, that is a JSON string
+		if ($value && is_string($value))
+		{
+			$value = json_decode($value, true);
+
+			// The string is invalid json
+			if (!$value)
+			{
+				return null;
+			}
+		}
+
+		if ($this->multiple)
+		{
+			$return = [];
+
+			if ($value)
+			{
+				foreach ($value as $key => $val)
+				{
+					$return[$key] = $subForm->filter($val);
+				}
+			}
+		}
+		else
+		{
+			$return = $subForm->filter($value);
+		}
+
+		return $return;
 	}
 }

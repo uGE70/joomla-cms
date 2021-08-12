@@ -1,18 +1,64 @@
 // Global
 
 html {
-   height: 100%;
+  height: 100%;
+
+  &.a11y_font {
+    font-size: 18px;
+  }
 }
 
 body {
-   min-height: 100%;
-}
-
-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
   padding: 0;
   margin: 0;
+  text-align: start;
+
+  &.admin {
+    background-color: var(--template-bg-dark-5);
+  }
+
   &.monochrome {
     filter: grayscale(1);
+    &::after {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: -1;
+      width: 100%;
+      height: 100%;
+      content: "";
+      background: var(--template-bg-dark-5);
+    }
+  }
+
+  &.a11y_contrast {
+    filter: contrast(115%);
+  }
+
+  &.monochrome.a11y_contrast {
+    filter: grayscale(1) contrast(115%);
+  }
+
+  &.a11y_highlight {
+    a,
+    .header-item-content {
+      padding: 3px;
+      text-decoration: underline !important;
+      border: #f00 dotted 1px;
+    }
+
+    .joomlaversion {
+      padding: 0;
+      text-decoration: none !important;
+      border: none;
+    }
+
+    a.page-link {
+      padding: $pagination-padding-y $pagination-padding-x;
+    }
   }
 }
 
@@ -51,7 +97,7 @@ input,
 textarea {
 
   &.focus-visible {
-  outline: auto 2px var(--focus);
+    outline: auto 2px var(--focus);
   }
 }
 
@@ -61,19 +107,16 @@ textarea {
   word-wrap: break-word;
 }
 
-.content {
-  font-size: $content-font-size;
-}
-
 label,
 caption {
   font-size: $label-font-size;
+  text-align: start;
 }
 
 .logo {
 
   img path {
-    fill: var(--atum-text-dark);
+    fill: var(--template-text-dark);
   }
 }
 
@@ -83,41 +126,28 @@ caption {
 }
 
 body .container-main {
+  order: 1;
   position: relative;
-  min-height: calc(100vh - #{$header-height} - 3px);
-  padding-left: 0;
   padding-right: 0;
-
-  &::before, &::after {
-    content: '';
-    width: 100%;
-    height: 100%;
-    position: fixed;
-    top: 0;
-    left: 0;
-    z-index: -1;
-    // Note IDE's will consider this file import to fail in SCSS but this is correct for the final compiled CSS file
-    background: var(--atum-bg-light) url("../images/joomla-pattern.svg");
-    background-size: 15rem;
-  }
-
-  &::after {
-    background: linear-gradient(135deg, var(--atum-bg-light) 0%, var(--atum-bg-light) 20%, rgba(225, 229, 231, 0) 100%);
-  }
+  padding-left: 0;
 }
 
 .content {
-  padding-top: 15px;
+  padding: 1rem;
+
+  @include media-breakpoint-up(md) {
+    padding: 0 2rem;
+
+    .subhead + & {
+      padding-top: 0;
+    }
+  }
+}
+
+body:not(.contentpane) .main-card {
+  background: $white;
   border-radius: $border-radius;
-
-  > .row {
-    margin-right: 0;
-    margin-left: 0;
-  }
-
-  .subhead + & {
-    padding-top: 0;
-  }
+  box-shadow: 0 2px 10px -8px var(--template-bg-dark-50);
 }
 
 .row-selected {
@@ -129,6 +159,11 @@ body .container-main {
   width: auto !important;
 }
 
+// Multiple buttons wrapping
+.input-group input {
+  min-width: 220px;
+}
+
 // Multilingual associations specific
 .item-associations {
   padding: 0;
@@ -136,76 +171,99 @@ body .container-main {
 
 .item-associations li {
   display: inline-block;
+  margin-bottom: 3px;
   list-style: none;
 }
 
 // Quickicon specific
 .message-alert {
-  text-align: right !important;
+  text-align: end !important;
 }
 
-// Fadeeffect for login page
-.load-fadein {
-  @include fadein-page;
-}
-
-.load-fadeout {
-  @include fadeout-page;
-}
-
-// Fix blinking of fade effect
-.container-main.fade-done > * {
-  opacity: 1;
-}
-
-.sidebar-wrapper.fade-done > * {
-  opacity: 1;
-}
-
-// dashboard items
-.menu-quicktask,
-.menu-badge {
-  float: right;
-  min-width: 1rem;
-}
-
-// extern links with icons
+// external links with icons
 a[target="_blank"]::before {
-  font: normal normal normal 14px/1 'Font Awesome 5 Free';
-  content: "\f35d  ";
+  padding-inline-end: 3px;
+  font-family: "Font Awesome 5 Free";
+  font-size: 14px;
+  font-weight: 900;
+  content: "\f35d";
 }
 
-#wrapper{
-  &.d-flex{
-    @include media-breakpoint-down(xs){
-      display:block !important;
+#wrapper {
+  &.d-flex {
+    @include media-breakpoint-down(sm) {
+      display: block !important;
     }
   }
 }
-.text-muted{
-  color: var(--atum-text-dark);
+
+.text-muted {
+  color: var(--template-text-dark) !important;
+  opacity: .7;
 }
 
-// dashboard items
-.menu-quicktask,
-.menu-badge {
-  float: right;
-  min-width: 1rem;
-}
+.card-columns {
+  display: grid;
+  grid-gap: 0 15px;
+  grid-template-columns: 1fr;
 
-.cpanel-help .card-columns,
-.cpanel-system .card-columns {
   @include media-breakpoint-up(md) {
-    column-count: 3;
+    grid-template-columns: 1fr 1fr;
   }
 }
-.card-columns {
-  @include media-breakpoint-up(md) {
-    column-count: 2;
+
+.cpanel-help,
+.cpanel-system {
+
+  .card-columns {
+    @include media-breakpoint-up(md) {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
   }
 }
 
 .tiny {
   font-size: $font-size-vsm;
   line-height: 1.4rem;
+}
+
+// details
+
+details {
+  padding: .5rem 1rem;
+  margin: 0 0 2rem;
+  background: var(--template-bg-dark-3);
+  border: 1px solid var(--template-bg-dark-10);
+  border-radius: $border-radius;
+
+  summary {
+    color: var(--template-link-color);
+
+    ~ * {
+      margin-top: 1rem;
+    }
+  }
+}
+
+// meter element
+meter {
+  width: 100%;
+}
+
+// Bootstrap 4 b/c
+.sr-only {
+  @extend .visually-hidden;
+}
+
+// tab *+* border
+@include media-breakpoint-up(md) {
+  joomla-tab[orientation=horizontal]:not([view=accordion]) {
+    section > .row {
+      --gutter-x: 4rem;
+
+      > * + * {
+        border-inline-start: 1px solid var(--template-bg-dark-10);
+      }
+    }
+  }
 }

@@ -2,7 +2,7 @@
 /**
  * Joomla! Content Management System
  *
- * @copyright  Copyright (C) 2005 - 2019 Open Source Matters, Inc. All rights reserved.
+ * @copyright  (C) 2009 Open Source Matters, Inc. <https://www.joomla.org>
  * @license    GNU General Public License version 2 or later; see LICENSE.txt
  */
 
@@ -101,6 +101,25 @@ abstract class FormField
 	protected $hidden = false;
 
 	/**
+	 * Should the label be hidden when rendering the form field? This may be useful if you have the
+	 * label rendering in a legend in your form field itself for radio buttons in a fieldset etc.
+	 * If you use this flag you should ensure you display the label in your form (for a11y etc.)
+	 *
+	 * @var    boolean
+	 * @since  4.0.0
+	 */
+	protected $hiddenLabel = false;
+
+	/**
+	 * Should the description be hidden when rendering the form field? This may be useful if you have the
+	 * description rendering in your form field itself for e.g. note fields.
+	 *
+	 * @var    boolean
+	 * @since  4.0.0
+	 */
+	protected $hiddenDescription = false;
+
+	/**
 	 * True to translate the field label string.
 	 *
 	 * @var    boolean
@@ -177,7 +196,7 @@ abstract class FormField
 	 * The validation text of invalid value of the form field.
 	 *
 	 * @var    string
-	 * @since  4.0
+	 * @since  4.0.0
 	 */
 	protected $validationtext;
 
@@ -313,6 +332,14 @@ abstract class FormField
 	protected $showon;
 
 	/**
+	 * The parent class of the field
+	 *
+	 * @var  string
+	 * @since 4.0.0
+	 */
+	protected $parentclass;
+
+	/**
 	 * The count value for generated name field
 	 *
 	 * @var    integer
@@ -351,6 +378,16 @@ abstract class FormField
 	protected $renderLabelLayout = 'joomla.form.renderlabel';
 
 	/**
+	 * The data-attribute name and values of the form field.
+	 * For example, data-action-type="click" data-action-type="change"
+	 *
+	 * @var  array
+	 *
+	 * @since 4.0.0
+	 */
+	protected $dataAttributes = array();
+
+	/**
 	 * Method to instantiate the form field object.
 	 *
 	 * @param   Form  $form  The form to attach to the form field object.
@@ -371,7 +408,7 @@ abstract class FormField
 		{
 			$parts = Normalise::fromCamelCase(\get_called_class(), true);
 
-			if ($parts[0] == 'J')
+			if ($parts[0] === 'J')
 			{
 				$this->type = StringHelper::ucfirst($parts[\count($parts) - 1], '_');
 			}
@@ -421,6 +458,7 @@ abstract class FormField
 			case 'spellcheck':
 			case 'validationtext':
 			case 'showon':
+			case 'parentclass':
 				return $this->$name;
 
 			case 'input':
@@ -443,6 +481,13 @@ abstract class FormField
 
 			case 'title':
 				return $this->getTitle();
+
+			default:
+				// Check for data attribute
+				if (strpos($name, 'data-') === 0 && array_key_exists($name, $this->dataAttributes))
+				{
+					return $this->dataAttributes[$name];
+				}
 		}
 
 		return;
@@ -478,7 +523,9 @@ abstract class FormField
 			case 'validationtext':
 			case 'group':
 			case 'showon':
+			case 'parentclass':
 			case 'default':
+			case 'autocomplete':
 				$this->$name = (string) $value;
 				break;
 
@@ -509,10 +556,6 @@ abstract class FormField
 				$this->$name = ($value === 'true' || $value === $name || $value === '1');
 				break;
 
-			case 'autocomplete':
-				$this->$name = (string) $value;
-				break;
-
 			case 'spellcheck':
 			case 'translateLabel':
 			case 'translateDescription':
@@ -536,13 +579,21 @@ abstract class FormField
 				break;
 
 			default:
-				if (property_exists(__CLASS__, $name))
+				// Detect data attribute(s)
+				if (strpos($name, 'data-') === 0)
 				{
-					Log::add("Cannot access protected / private property $name of " . __CLASS__);
+					$this->dataAttributes[$name] = $value;
 				}
 				else
 				{
-					$this->$name = $value;
+					if (property_exists(__CLASS__, $name))
+					{
+						Log::add("Cannot access protected / private property $name of " . __CLASS__);
+					}
+					else
+					{
+						$this->$name = $value;
+					}
 				}
 		}
 	}
@@ -580,7 +631,7 @@ abstract class FormField
 	public function setup(\SimpleXMLElement $element, $value, $group = null)
 	{
 		// Make sure there is a valid FormField XML element.
-		if ((string) $element->getName() != 'field')
+		if ((string) $element->getName() !== 'field')
 		{
 			return false;
 		}
@@ -612,6 +663,16 @@ abstract class FormField
 			$this->value = $value;
 		}
 
+		// Lets detect miscellaneous data attribute. For eg, data-*
+		foreach ($this->element->attributes() as $key => $value)
+		{
+			if (strpos($key, 'data-') === 0)
+			{
+				// Data attribute key value pair
+				$this->dataAttributes[$key] = $value;
+			}
+		}
+
 		foreach ($attributes as $attributeName)
 		{
 			$this->__set($attributeName, $element[$attributeName]);
@@ -619,12 +680,14 @@ abstract class FormField
 
 		// Allow for repeatable elements
 		$repeat = (string) $element['repeat'];
-		$this->repeat = ($repeat == 'true' || $repeat == 'multiple' || (!empty($this->form->repeat) && $this->form->repeat == 1));
+		$this->repeat = ($repeat === 'true' || $repeat === 'multiple' || (!empty($this->form->repeat) && $this->form->repeat == 1));
 
 		// Set the visibility.
-		$this->hidden = ($this->hidden || (string) $element['type'] == 'hidden');
+		$this->hidden = ($this->hidden || strtolower((string) $this->element['type']) === 'hidden');
 
 		$this->layout = !empty($this->element['layout']) ? (string) $this->element['layout'] : $this->layout;
+
+		$this->parentclass = isset($this->element['parentclass']) ? (string) $this->element['parentclass'] : $this->parentclass;
 
 		// Add required to class list if field is required.
 		if ($this->required)
@@ -702,7 +765,7 @@ abstract class FormField
 			$repeatCounter = empty($this->form->repeatCounter) ? 0 : $this->form->repeatCounter;
 			$id .= '-' . $repeatCounter;
 
-			if (strtolower($this->type) == 'radio')
+			if (strtolower($this->type) === 'radio')
 			{
 				$id .= '-';
 			}
@@ -768,7 +831,7 @@ abstract class FormField
 		$data = $this->getLayoutData();
 
 		// Forcing the Alias field to display the tip below
-		$position = $this->element['name'] == 'alias' ? ' data-placement="bottom" ' : '';
+		$position = $this->element['name'] === 'alias' ? ' data-bs-placement="bottom" ' : '';
 
 		// Here mainly for B/C with old layouts. This can be done in the layouts directly
 		$extraData = array(
@@ -908,6 +971,41 @@ abstract class FormField
 	}
 
 	/**
+	 * Method to get data attributes. For example, data-user-type
+	 *
+	 * @return  array list of data attribute(s)
+	 *
+	 * @since  4.0.0
+	 */
+	public function getDataAttributes()
+	{
+		return $this->dataAttributes;
+	}
+
+	/**
+	 * Method to render data attributes to html.
+	 *
+	 * @return  string  A HTML Tag Attribute string of data attribute(s)
+	 *
+	 * @since  4.0.0
+	 */
+	public function renderDataAttributes()
+	{
+		$dataAttribute  = '';
+		$dataAttributes = $this->getDataAttributes();
+
+		if (!empty($dataAttributes))
+		{
+			foreach ($dataAttributes as $key => $attrValue)
+			{
+				$dataAttribute .= ' ' . $key . '="' . htmlspecialchars($attrValue, ENT_COMPAT, 'UTF-8') . '"';
+			}
+		}
+
+		return $dataAttribute;
+	}
+
+	/**
 	 * Render a layout of this field
 	 *
 	 * @param   string  $layoutId  Layout identifier
@@ -947,9 +1045,28 @@ abstract class FormField
 
 		$options['rel'] = '';
 
-		if (empty($options['hiddenLabel']) && $this->getAttribute('hiddenLabel') || $this->class === 'switcher')
+		if (empty($options['hiddenLabel']))
 		{
-			$options['hiddenLabel'] = true;
+			if ($this->getAttribute('hiddenLabel'))
+			{
+				$options['hiddenLabel'] = $this->getAttribute('hiddenLabel') == 'true';
+			}
+			else
+			{
+				$options['hiddenLabel'] = $this->hiddenLabel;
+			}
+		}
+
+		if (empty($options['hiddenDescription']))
+		{
+			if ($this->getAttribute('hiddenDescription'))
+			{
+				$options['hiddenDescription'] = $this->getAttribute('hiddenDescription') == 'true';
+			}
+			else
+			{
+				$options['hiddenDescription'] = $this->hiddenDescription;
+			}
 		}
 
 		if ($this->showon)
@@ -981,6 +1098,7 @@ abstract class FormField
 	 * @return  mixed   The filtered value.
 	 *
 	 * @since   4.0.0
+	 * @throws  \UnexpectedValueException
 	 */
 	public function filter($value, $group = null, Registry $input = null)
 	{
@@ -993,35 +1111,13 @@ abstract class FormField
 		// Get the field filter type.
 		$filter = (string) $this->element['filter'];
 
-		if ($filter != '')
+		if ($filter !== '')
 		{
-			$required = ((string) $this->element['required'] == 'true' || (string) $this->element['required'] == 'required');
+			$required = ((string) $this->element['required'] === 'true' || (string) $this->element['required'] === 'required');
 
 			if (($value === '' || $value === null) && !$required)
 			{
 				return '';
-			}
-
-			// Dirty way of ensuring required fields in subforms are submitted and filtered the way other fields are
-			if ($this instanceof SubformField)
-			{
-				$subForm = $this->loadSubForm();
-
-				if ($this->multiple && !empty($value))
-				{
-					$return = array();
-
-					foreach ($value as $key => $val)
-					{
-						$return[$key] = $subForm->filter($val);
-					}
-				}
-				else
-				{
-					$return = $subForm->filter($value);
-				}
-
-				return $return;
 			}
 
 			// Check for a callback filter
@@ -1043,6 +1139,42 @@ abstract class FormField
 			{
 				return \call_user_func($filter, $value);
 			}
+
+			if ($this instanceof SubformField)
+			{
+				$subForm = $this->loadSubForm();
+
+				// Subform field may have a default value, that is a JSON string
+				if ($value && is_string($value))
+				{
+					$value = json_decode($value, true);
+
+					// The string is invalid json
+					if (!$value)
+					{
+						return null;
+					}
+				}
+
+				if ($this->multiple)
+				{
+					$return = array();
+
+					if ($value)
+					{
+						foreach ($value as $key => $val)
+						{
+							$return[$key] = $subForm->filter($val);
+						}
+					}
+				}
+				else
+				{
+					$return = $subForm->filter($value);
+				}
+
+				return $return;
+			}
 		}
 
 		return InputFilter::getInstance()->clean($value, $filter);
@@ -1062,7 +1194,7 @@ abstract class FormField
 	 * @throws  \InvalidArgumentException
 	 * @throws  \UnexpectedValueException
 	 */
-	public function validate($value, $group = null, \Joomla\Registry\Registry $input = null)
+	public function validate($value, $group = null, Registry $input = null)
 	{
 		// Make sure there is a valid SimpleXMLElement.
 		if (!($this->element instanceof \SimpleXMLElement))
@@ -1073,7 +1205,7 @@ abstract class FormField
 		$valid = true;
 
 		// Check if the field is required.
-		$required = ((string) $this->element['required'] == 'true' || (string) $this->element['required'] == 'required');
+		$required = ((string) $this->element['required'] === 'true' || (string) $this->element['required'] === 'required');
 
 		if ($this->element['label'])
 		{
@@ -1117,34 +1249,17 @@ abstract class FormField
 
 		if ($valid !== false && $this instanceof SubformField)
 		{
-			$subForm = $this->loadSubForm();
+			// Load the subform validation rule.
+			$rule = FormHelper::loadRuleType('Subform');
 
-			if ($this->multiple)
+			try
 			{
-				foreach ($value as $key => $val)
-				{
-					$val = (array) $val;
-					$valid = $subForm->validate($val);
-
-					if ($valid === false)
-					{
-						break;
-					}
-				}
+				// Run the field validation rule test.
+				$valid = $rule->test($this->element, $value, $group, $input, $this->form);
 			}
-			else
+			catch (\Exception $e)
 			{
-				$valid = $subForm->validate($value);
-			}
-
-			if ($valid === false)
-			{
-				$errors = $subForm->getErrors();
-
-				foreach ($errors as $error)
-				{
-					return $error;
-				}
+				return $e;
 			}
 		}
 
@@ -1166,7 +1281,7 @@ abstract class FormField
 			return new \UnexpectedValueException($message);
 		}
 
-		return true;
+		return $valid;
 	}
 
 	/**
@@ -1196,8 +1311,8 @@ abstract class FormField
 	protected function getLayoutData()
 	{
 		// Label preprocess
-		$label = $this->element['label'] ? (string) $this->element['label'] : (string) $this->element['name'];
-		$label = $this->translateLabel ? Text::_($label) : $label;
+		$label = !empty($this->element['label']) ? (string) $this->element['label'] : null;
+		$label = $label && $this->translateLabel ? Text::_($label) : $label;
 
 		// Description preprocess
 		$description = !empty($this->description) ? $this->description : null;
@@ -1205,7 +1320,7 @@ abstract class FormField
 
 		$alt = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $this->fieldname);
 
-		return array(
+		return [
 			'autocomplete'   => $this->autocomplete,
 			'autofocus'      => $this->autofocus,
 			'class'          => $this->class,
@@ -1231,7 +1346,10 @@ abstract class FormField
 			'spellcheck'     => $this->spellcheck,
 			'validate'       => $this->validate,
 			'value'          => $this->value,
-		);
+			'dataAttribute'  => $this->renderDataAttributes(),
+			'dataAttributes' => $this->dataAttributes,
+			'parentclass'    => $this->parentclass,
+		];
 	}
 
 	/**
